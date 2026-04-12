@@ -4,7 +4,7 @@ use ndarray::{Array2, ArrayView2, s};
 use rayon::prelude::*;
 
 /// Encode n vectors of dimension dim.
-/// Returns (packed_codes as flat Vec<u8>, norms as Vec<f32>).
+/// Returns (packed_codes as flat Vec<u8>, norms as Vec<f32>, rotated_unit_vectors as flat Vec<f32>).
 pub fn encode(
     vectors: &[f32],
     n: usize,
@@ -12,7 +12,7 @@ pub fn encode(
     rotation: &[f32], // dim x dim, row-major
     boundaries: &[f32],
     bit_width: usize,
-) -> (Vec<u8>, Vec<f32>) {
+) -> (Vec<u8>, Vec<f32>, Vec<f32>) {
     let mut norms = vec![0.0f32; n];
     let mut unit_flat = vec![0.0f32; n * dim];
 
@@ -46,7 +46,10 @@ pub fn encode(
     // 4. Bit-pack into bit-plane format
     let packed = pack_codes(&codes, n, dim, bit_width);
 
-    (packed, norms)
+    // Return rotated unit vectors for reranking
+    let rotated_owned = rotated.to_vec();
+
+    (packed, norms, rotated_owned)
 }
 
 /// Pack quantized codes into bit-plane format.
