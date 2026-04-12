@@ -3766,7 +3766,6 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 [[package]]
 name = "turbovec"
 version = "0.1.0"
-source = "git+https://github.com/RyanCodrai/turbovec.git#2fcc2921b607bf0e907282ad4a8a4ac4e7db2165"
 dependencies = [
  "blas-src",
  "faer",
