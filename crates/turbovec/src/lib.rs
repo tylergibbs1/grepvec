@@ -23,7 +23,7 @@ pub mod search;
 
 use std::path::Path;
 
-const ROTATION_SEED: u64 = 7;
+const ROTATION_SEED: u64 = 42;
 const BLOCK: usize = 32;
 const FLUSH_EVERY: usize = 256;
 
