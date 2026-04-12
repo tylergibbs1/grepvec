@@ -113,7 +113,10 @@ impl TurboQuantIndex {
         let centroids = self.centroids.as_ref().unwrap();
         let k = k.min(self.n_vectors);
 
-        let (scores, indices) = search::search(
+        // Oversample by 4x, then rerank with exact centroid-reconstructed scores.
+        let oversample = (4 * k).min(self.n_vectors);
+
+        let (raw_scores, raw_indices) = search::search(
             queries,
             nq,
             rotation,
@@ -124,12 +127,67 @@ impl TurboQuantIndex {
             self.dim,
             self.n_vectors,
             self.n_blocks,
-            k,
+            oversample,
         );
 
+        // Rotate queries for reranking
+        let q_rot: Vec<Vec<f32>> = (0..nq)
+            .map(|qi| {
+                let q_row = &queries[qi * self.dim..(qi + 1) * self.dim];
+                let mut rotated = vec![0.0f32; self.dim];
+                for j in 0..self.dim {
+                    let r_row = &rotation[j * self.dim..(j + 1) * self.dim];
+                    let mut dot = 0.0f32;
+                    for d in 0..self.dim {
+                        dot += q_row[d] * r_row[d];
+                    }
+                    rotated[j] = dot;
+                }
+                rotated
+            })
+            .collect();
+
+        // Rerank each query's candidates
+        let mut all_scores = Vec::with_capacity(nq * k);
+        let mut all_indices = Vec::with_capacity(nq * k);
+
+        for qi in 0..nq {
+            let cand_scores = &raw_scores[qi * oversample..(qi + 1) * oversample];
+            let cand_indices = &raw_indices[qi * oversample..(qi + 1) * oversample];
+
+            // Recompute scores with full float precision
+            let mut reranked: Vec<(f32, i64)> = cand_indices
+                .iter()
+                .enumerate()
+                .filter(|(_, &idx)| idx >= 0)
+                .map(|(_, &idx)| {
+                    let vi = idx as usize;
+                    let score = encode::rerank_score(
+                        &self.packed_codes,
+                        vi,
+                        self.dim,
+                        self.bit_width,
+                        &q_rot[qi],
+                        centroids,
+                        self.norms[vi],
+                    );
+                    (score, idx)
+                })
+                .collect();
+
+            reranked.sort_unstable_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+            reranked.truncate(k);
+
+            let pad = k.saturating_sub(reranked.len());
+            all_scores.extend(reranked.iter().map(|(s, _)| *s));
+            all_scores.extend(std::iter::repeat(f32::NEG_INFINITY).take(pad));
+            all_indices.extend(reranked.iter().map(|(_, i)| *i));
+            all_indices.extend(std::iter::repeat(0i64).take(pad));
+        }
+
         SearchResults {
-            scores,
-            indices,
+            scores: all_scores,
+            indices: all_indices,
             nq,
             k,
         }
