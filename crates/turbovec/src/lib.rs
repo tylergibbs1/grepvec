@@ -152,7 +152,7 @@ impl TurboQuantIndex {
                 .map(|&idx| {
                     let vi = idx as usize;
                     let v_rot = &self.rotated_vectors[vi * self.dim..(vi + 1) * self.dim];
-                    let dot: f32 = q.iter().zip(v_rot.iter()).map(|(a, b)| a * b).sum();
+                    let dot = search::dot_f32_pub(q, v_rot);
                     (dot * self.norms[vi], idx)
                 })
                 .collect();

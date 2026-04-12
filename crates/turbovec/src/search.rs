@@ -9,6 +9,13 @@ use rayon::prelude::*;
 use crate::{BLOCK, FLUSH_EVERY};
 
 /// SIMD dot product of two f32 slices (must be same length, multiple of 4).
+/// Public wrapper for use in reranking.
+#[inline]
+pub fn dot_f32_pub(a: &[f32], b: &[f32]) -> f32 {
+    dot_f32(a, b)
+}
+
+/// SIMD dot product of two f32 slices (must be same length, multiple of 4).
 #[inline]
 fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
     let n = a.len();
