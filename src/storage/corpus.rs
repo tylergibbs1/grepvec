@@ -75,7 +75,7 @@ impl NamedCorpus {
             .map_err(|_| StorageError::NoModelRecorded)
     }
 
-    /// Expose the sqlite connection for BM25 queries.
+    /// Expose the sqlite connection for direct queries.
     pub fn connection(&self) -> &Connection {
         &self.conn
     }

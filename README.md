@@ -50,16 +50,27 @@ $ echo "new thought about queues" > ~/notes/queues.md
 $ grepvec "queues" ~/notes
 [embedding 1 new file...]
 notes/queues.md:1  0.987  new thought about queues
+
+# Pipe text from stdin:
+$ cat incident.log | grepvec --stdin "auth failures around the Redis outage"
 ```
+
+## Why not just ripgrep?
+
+ripgrep finds exact text matches. grepvec finds **meaning**. When you don't know the exact words, ripgrep returns nothing:
+
+```
+Query: "how to handle too many requests"        rg: 0 results  grepvec: rate_limiting.md (0.625)
+Query: "what to do when a service keeps failing" rg: 0 results  grepvec: circuit_breakers.md (0.626)
+Query: "zero downtime releases"                  rg: 0 results  grepvec: deployment.md (0.698)
+Query: "how to paginate API results efficiently"  rg: 0 results  grepvec: api_design.md (0.704)
+```
+
+Run `./benchmarks/vs_ripgrep.sh` to reproduce.
 
 ## How it works
 
-grepvec combines two search methods in one pass:
-
-1. **Vector search** -- embeds your query and documents with [fastembed](https://github.com/Anush008/fastembed-rs), quantizes with [TurboQuant](https://arxiv.org/abs/2504.19874) (via [turbovec](https://github.com/RyanCodrai/turbovec)), and does a SIMD brute-force scan.
-2. **BM25 fulltext** -- classic keyword scoring over the same corpus.
-
-Scores are normalized and merged: `final = alpha * vector + (1 - alpha) * bm25`. Default alpha is 0.5. Tune with `--alpha`.
+grepvec embeds your query and documents with [fastembed](https://github.com/Anush008/fastembed-rs), quantizes with [TurboQuant](https://arxiv.org/abs/2504.19874) (via [turbovec](https://github.com/RyanCodrai/turbovec)), and does a SIMD brute-force scan to find the most similar chunks.
 
 The key innovation from TurboQuant is that quantization codebooks are derived from math, not data. No training step means you can quantize one vector at a time with no setup -- which is what makes the grep model possible.
 
@@ -70,6 +81,9 @@ Files are hashed with blake3. Embeddings are keyed by content hash, so:
 - Renaming a file doesn't trigger re-embedding.
 - Two projects sharing the same file share one embedding.
 - Switching git branches only re-embeds changed files.
+- mtime+size fast path skips rehashing when files haven't changed.
+- Persistent `.tv` index is reloaded on repeat queries (no rebuild).
+- Query embeddings are cached so repeated queries skip the model call.
 
 Cache lives at `~/.cache/grepvec/` (override with `--cache-dir` or `GREPVEC_CACHE_DIR`).
 
@@ -83,16 +97,18 @@ grepvec [OPTIONS] [QUERY] [PATHS]...
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-a, --alpha` | `0.5` | Hybrid weight. `0` = pure BM25, `1` = pure vector. |
 | `-k, --top` | `10` | Number of results. |
 | `-m, --model` | `bge-large` | Embedding model (see below). |
 | `--bits` | `4` | TurboQuant bit width (2 or 4). |
 | `-l, --files-only` | | Print paths only, like `grep -l`. |
-| `--json` | | JSON output. |
-| `--no-embed` | | Text-only mode (BM25 only, skip embedding). |
+| `--json` | | JSON output (auto-enabled when stdout is piped). |
+| `--stdin` | | Read content from stdin instead of walking files. |
+| `--ignore-file` | | Additional ignore pattern file (repeatable). |
+| `--fields` | | Limit JSON output fields (e.g. `path,score`). |
 | `--no-cache` | | Don't read or write the global cache. |
 | `--reindex` | | Force re-embedding of all files. |
 | `--chunk-size` | `2048` | Bytes per chunk before splitting. |
+| `--dry-run` | | Validate without executing (for mutating commands). |
 
 ### Subcommands
 
@@ -102,11 +118,14 @@ grepvec init PATH [--model NAME]    # Create a named corpus
 grepvec add PATH FILE...            # Add files to a corpus
 grepvec rm PATH DOC_ID...           # Remove documents
 grepvec compact PATH                # Rewrite without tombstones
-grepvec stats [PATH]                # Show corpus or cache stats
+grepvec stats [PATH] [--json]       # Show corpus or cache stats
 
 # Cache maintenance:
 grepvec gc [--aggressive]            # Garbage-collect stale data
-grepvec cache-info                   # Show cache size and model
+grepvec cache-info [--json]          # Show cache size and model
+
+# Agent introspection:
+grepvec schema COMMAND               # Dump command schema as JSON
 ```
 
 ### Exit codes
@@ -137,7 +156,6 @@ use grepvec::{implicit_search, types::{Config, ModelChoice}};
 
 let config = Config {
     model: ModelChoice::BgeSmall,
-    alpha: 0.7,
     top_k: 5,
     ..Config::default()
 };
@@ -152,14 +170,17 @@ for r in &results {
 
 ```
 ~/.cache/grepvec/
-  index.db              # sqlite: path -> content_hash, chunks, BM25 terms
+  index.db              # sqlite: path -> content_hash, chunks, mtime
+  vectors.tv            # persistent turbovec index (reloaded on repeat queries)
   embeddings/
     <blake3_hash>.emb   # raw f32 vectors, one file per document
+  qcache/
+    <query_hash>.qemb   # cached query embeddings
   models/
     bge-small-en-v1.5/  # fastembed model weights (auto-downloaded)
 ```
 
-~1,850 lines of Rust. Dependencies: turbovec, fastembed, rusqlite, blake3, clap, ignore, indicatif.
+~2,200 lines of Rust. Dependencies: turbovec (vendored), fastembed, rusqlite, blake3, clap, ignore, indicatif.
 
 ## Limitations (v0.1)
 
@@ -167,7 +188,6 @@ for r in &results {
 - Brute-force scan, not HNSW. Designed for corpora up to ~1M documents.
 - CPU embedding only (no GPU acceleration).
 - English-optimized by default. Use `--model e5-large` or `--model bge-m3` for multilingual.
-- No incremental vector index updates -- the turbovec index is rebuilt when documents change.
 - External embedder (`--embed-cmd`) is not yet implemented.
 
 ## License

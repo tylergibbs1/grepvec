@@ -45,9 +45,8 @@ impl ImplicitCache {
                 Ok(false)
             }
             Some(_) => {
-                self.conn.execute_batch(
-                    "DELETE FROM bm25_terms; DELETE FROM chunks; DELETE FROM documents;",
-                )?;
+                self.conn
+                    .execute_batch("DELETE FROM chunks; DELETE FROM documents;")?;
                 let emb_dir = self.embeddings_dir();
                 if emb_dir.exists() {
                     fs::remove_dir_all(&emb_dir)?;
@@ -69,7 +68,7 @@ impl ImplicitCache {
         self.root.join("embeddings")
     }
 
-    /// Expose the sqlite connection for BM25 queries.
+    /// Expose the sqlite connection for direct queries.
     pub fn connection(&self) -> &Connection {
         &self.conn
     }

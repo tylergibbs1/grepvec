@@ -1,3 +1,4 @@
+#![allow(warnings)]
 //! TurboQuant implementation for vector search.
 //!
 //! Compresses high-dimensional vectors to 2-4 bits per coordinate with

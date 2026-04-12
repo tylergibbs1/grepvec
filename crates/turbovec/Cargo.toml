@@ -22,6 +22,10 @@ statrs = "0.17"
 ndarray = { version = "0.17", features = ["blas"] }
 blas-src = { version = "0.10", features = ["accelerate"] }
 
+[lints.clippy]
+all = "allow"
+pedantic = "allow"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 ndarray = { version = "0.17", features = ["blas"] }
 blas-src = { version = "0.10", features = ["openblas"] }

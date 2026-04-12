@@ -6,6 +6,8 @@
 //!
 //! Run with: `cargo test --test recall_benchmark -- --ignored --nocapture`
 
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 #[cfg(target_os = "macos")]
 extern crate accelerate_src;
 
