@@ -9,6 +9,13 @@ use rayon::prelude::*;
 use crate::{BLOCK, FLUSH_EVERY};
 
 /// SIMD dot product of two f32 slices (must be same length, multiple of 4).
+/// Public wrapper for use in reranking.
+#[inline]
+pub fn dot_f32_pub(a: &[f32], b: &[f32]) -> f32 {
+    dot_f32(a, b)
+}
+
+/// SIMD dot product of two f32 slices (must be same length, multiple of 4).
 #[inline]
 fn dot_f32(a: &[f32], b: &[f32]) -> f32 {
     let n = a.len();
@@ -763,6 +770,28 @@ fn build_query_neon_lut_from_slice(
     QueryNeonLut { uint8_luts, scale, bias }
 }
 
+/// Rotate queries: q_rot = queries @ rotation^T.
+/// Returns flat Vec of length nq * dim.
+pub fn rotate_queries(
+    queries: &[f32],
+    nq: usize,
+    rotation: &[f32],
+    dim: usize,
+) -> Vec<f32> {
+    (0..nq)
+        .into_par_iter()
+        .flat_map(|qi| {
+            let q_row = &queries[qi * dim..(qi + 1) * dim];
+            let mut rotated = vec![0.0f32; dim];
+            for j in 0..dim {
+                let r_row = &rotation[j * dim..(j + 1) * dim];
+                rotated[j] = dot_f32(q_row, r_row);
+            }
+            rotated
+        })
+        .collect()
+}
+
 /// Full search: rotation + LUT build + scoring + heap top-k.
 /// Returns (scores_flat, indices_flat) each of length nq * k.
 pub fn search(
@@ -778,22 +807,26 @@ pub fn search(
     n_blocks: usize,
     k: usize,
 ) -> (Vec<f32>, Vec<i64>) {
+    let q_rot = rotate_queries(queries, nq, rotation, dim);
+    search_rotated(&q_rot, nq, blocked_codes, centroids, norms, bits, dim, n_vectors, n_blocks, k)
+}
+
+/// Search with pre-rotated queries (skips rotation step).
+/// Returns (scores_flat, indices_flat) each of length nq * k.
+pub fn search_rotated(
+    q_rot: &[f32],      // (nq, dim) row-major, already rotated
+    nq: usize,
+    blocked_codes: &[u8],
+    centroids: &[f32],
+    norms: &[f32],
+    bits: usize,
+    dim: usize,
+    n_vectors: usize,
+    n_blocks: usize,
+    k: usize,
+) -> (Vec<f32>, Vec<i64>) {
     let k = k.min(n_vectors);
     let n_byte_groups = dim / (8 / bits);
-
-    // Parallel rotation: each query rotated independently
-    let q_rot: Vec<f32> = (0..nq)
-        .into_par_iter()
-        .flat_map(|qi| {
-            let q_row = &queries[qi * dim..(qi + 1) * dim];
-            let mut rotated = vec![0.0f32; dim];
-            for j in 0..dim {
-                let r_row = &rotation[j * dim..(j + 1) * dim];
-                rotated[j] = dot_f32(q_row, r_row);
-            }
-            rotated
-        })
-        .collect();
 
     // Build LUTs in parallel
     let query_luts: Vec<QueryNeonLut> = (0..nq)
