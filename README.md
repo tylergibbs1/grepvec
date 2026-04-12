@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Grep-style hybrid vector + fulltext search.</strong><br>
+  <strong>Grep-style vector similarity search.</strong><br>
   No index build step. No daemons. No config files.
 </p>
 
@@ -15,11 +15,22 @@ Think of it as `ripgrep` for the case where you also want semantic similarity, n
 
 ## Install
 
-```
-cargo install --git https://github.com/YOUR_USER/grepvec
+**Prebuilt binaries** (macOS, Linux):
+
+Download from [GitHub Releases](https://github.com/tylergibbs1/grepvec/releases/latest), extract, and add to your `PATH`:
+```bash
+# macOS (Apple Silicon)
+curl -LO https://github.com/tylergibbs1/grepvec/releases/latest/download/grepvec-aarch64-apple-darwin.tar.gz
+tar xzf grepvec-aarch64-apple-darwin.tar.gz
+sudo mv grepvec /usr/local/bin/
 ```
 
-Requires Rust 1.80+. On first run, the default embedding model (~400 MB) is downloaded and cached.
+**From source** (requires Rust 1.80+):
+```bash
+cargo install --git https://github.com/tylergibbs1/grepvec
+```
+
+On first run, the default embedding model (~400 MB) is downloaded and cached. Use `--model bge-small` (~30 MB) to start lighter.
 
 ## Quick start
 
