@@ -70,9 +70,9 @@ Run `./benchmarks/vs_ripgrep.sh` to reproduce.
 
 ## How it works
 
-grepvec embeds your query and documents with [fastembed](https://github.com/Anush008/fastembed-rs), quantizes with [TurboQuant](https://arxiv.org/abs/2504.19874) (via [turbovec](https://github.com/RyanCodrai/turbovec)), and does a SIMD brute-force scan to find the most similar chunks.
+grepvec embeds your query and documents with [fastembed](https://github.com/Anush008/fastembed-rs), quantizes with [TurboQuant](https://arxiv.org/abs/2504.19874) (via [turbovec](https://github.com/RyanCodrai/turbovec)), and does a SIMD brute-force scan to find the most similar chunks. Top candidates are then reranked with exact dot products for high recall.
 
-The key innovation from TurboQuant is that quantization codebooks are derived from math, not data. No training step means you can quantize one vector at a time with no setup -- which is what makes the grep model possible.
+The key innovation from TurboQuant is that quantization codebooks are derived from math, not data. No training step means you can quantize one vector at a time with no setup -- which is what makes the grep model possible. The oversample-and-rerank step ensures that quantization noise doesn't affect result quality: on benchmarks, grepvec achieves **perfect recall@1** at 4-bit quantization across all k values.
 
 ### Caching
 
