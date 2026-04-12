@@ -118,13 +118,15 @@ impl TurboQuantIndex {
         let centroids = self.centroids.as_ref().unwrap();
         let k = k.min(self.n_vectors);
 
+        // Rotate queries once — reused for both LUT search and reranking.
+        let q_rot = search::rotate_queries(queries, nq, rotation, self.dim);
+
         // Oversample by 128x, then rerank with exact dot product scores.
         let oversample = (128 * k).min(self.n_vectors);
 
-        let (raw_scores, raw_indices) = search::search(
-            queries,
+        let (raw_scores, raw_indices) = search::search_rotated(
+            &q_rot,
             nq,
-            rotation,
             blocked,
             centroids,
             &self.norms,
@@ -135,29 +137,14 @@ impl TurboQuantIndex {
             oversample,
         );
 
-        // Rotate queries for reranking (exact dot product with stored rotated vectors)
-        let q_rot: Vec<Vec<f32>> = (0..nq)
-            .map(|qi| {
-                let q_row = &queries[qi * self.dim..(qi + 1) * self.dim];
-                let mut rotated = vec![0.0f32; self.dim];
-                for j in 0..self.dim {
-                    let r_row = &rotation[j * self.dim..(j + 1) * self.dim];
-                    let mut dot = 0.0f32;
-                    for d in 0..self.dim {
-                        dot += q_row[d] * r_row[d];
-                    }
-                    rotated[j] = dot;
-                }
-                rotated
-            })
-            .collect();
-
-        // Rerank using exact dot product with stored rotated unit vectors
+        // Rerank using exact dot product with stored rotated unit vectors.
+        // q_rot is already computed above — no duplicate rotation.
         let mut all_scores = Vec::with_capacity(nq * k);
         let mut all_indices = Vec::with_capacity(nq * k);
 
         for qi in 0..nq {
             let cand_indices = &raw_indices[qi * oversample..(qi + 1) * oversample];
+            let q = &q_rot[qi * self.dim..(qi + 1) * self.dim];
 
             let mut reranked: Vec<(f32, i64)> = cand_indices
                 .iter()
@@ -165,7 +152,7 @@ impl TurboQuantIndex {
                 .map(|&idx| {
                     let vi = idx as usize;
                     let v_rot = &self.rotated_vectors[vi * self.dim..(vi + 1) * self.dim];
-                    let dot: f32 = q_rot[qi].iter().zip(v_rot.iter()).map(|(a, b)| a * b).sum();
+                    let dot: f32 = q.iter().zip(v_rot.iter()).map(|(a, b)| a * b).sum();
                     (dot * self.norms[vi], idx)
                 })
                 .collect();
