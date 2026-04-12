@@ -138,7 +138,7 @@ impl TurboQuantIndex {
         );
 
         // Rerank using exact dot product with stored rotated unit vectors.
-        // q_rot is already computed above — no duplicate rotation.
+        // Uses a min-heap of size k to avoid allocating and sorting all candidates.
         let mut all_scores = Vec::with_capacity(nq * k);
         let mut all_indices = Vec::with_capacity(nq * k);
 
@@ -146,24 +146,49 @@ impl TurboQuantIndex {
             let cand_indices = &raw_indices[qi * oversample..(qi + 1) * oversample];
             let q = &q_rot[qi * self.dim..(qi + 1) * self.dim];
 
-            let mut reranked: Vec<(f32, i64)> = cand_indices
-                .iter()
-                .filter(|&&idx| idx >= 0)
-                .map(|&idx| {
-                    let vi = idx as usize;
-                    let v_rot = &self.rotated_vectors[vi * self.dim..(vi + 1) * self.dim];
-                    let dot = search::dot_f32_pub(q, v_rot);
-                    (dot * self.norms[vi], idx)
-                })
-                .collect();
+            // Min-heap: keep the top-k highest scores.
+            let mut heap_s = vec![f32::NEG_INFINITY; k];
+            let mut heap_i = vec![0i64; k];
+            let mut heap_sz = 0usize;
+            let mut heap_min = f32::NEG_INFINITY;
+            let mut heap_mi = 0usize;
 
-            reranked.sort_unstable_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-            reranked.truncate(k);
+            for &idx in cand_indices {
+                if idx < 0 { continue; }
+                let vi = idx as usize;
+                let v_rot = &self.rotated_vectors[vi * self.dim..(vi + 1) * self.dim];
+                let score = search::dot_f32_pub(q, v_rot) * self.norms[vi];
 
-            let pad = k.saturating_sub(reranked.len());
-            all_scores.extend(reranked.iter().map(|(s, _)| *s));
+                if heap_sz < k {
+                    heap_s[heap_sz] = score;
+                    heap_i[heap_sz] = idx;
+                    heap_sz += 1;
+                    if heap_sz == k {
+                        heap_min = heap_s[0]; heap_mi = 0;
+                        for h in 1..k {
+                            if heap_s[h] < heap_min { heap_min = heap_s[h]; heap_mi = h; }
+                        }
+                    }
+                } else if score > heap_min {
+                    heap_s[heap_mi] = score;
+                    heap_i[heap_mi] = idx;
+                    heap_min = heap_s[0]; heap_mi = 0;
+                    for h in 1..k {
+                        if heap_s[h] < heap_min { heap_min = heap_s[h]; heap_mi = h; }
+                    }
+                }
+            }
+
+            // Sort the heap results by descending score
+            let mut pairs: Vec<(f32, i64)> = heap_s[..heap_sz].iter()
+                .zip(heap_i[..heap_sz].iter())
+                .map(|(&s, &i)| (s, i)).collect();
+            pairs.sort_unstable_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+            let pad = k.saturating_sub(pairs.len());
+            all_scores.extend(pairs.iter().map(|(s, _)| *s));
             all_scores.extend(std::iter::repeat(f32::NEG_INFINITY).take(pad));
-            all_indices.extend(reranked.iter().map(|(_, i)| *i));
+            all_indices.extend(pairs.iter().map(|(_, i)| *i));
             all_indices.extend(std::iter::repeat(0i64).take(pad));
         }
 
