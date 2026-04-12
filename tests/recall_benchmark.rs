@@ -98,13 +98,21 @@ fn recall_turboquant_dim384() {
             eprintln!("  Recall@1 at k={k:>2}: {r:.4}");
         }
 
+        let r_at = |target_k: usize| -> f64 {
+            results.iter().find(|(k, _)| *k == target_k).map(|(_, r)| *r).unwrap_or(0.0)
+        };
+
         if bit_width == 4 {
-            // At k=64, recall should converge toward 1.0.
-            let r_at_64 = results.iter().find(|(k, _)| *k == 64).map(|(_, r)| *r).unwrap_or(0.0);
-            assert!(
-                r_at_64 > 0.90,
-                "4-bit recall@1 at k=64 = {r_at_64:.4}, expected > 0.90"
-            );
+            let r1 = r_at(1);
+            assert!(r1 > 0.95, "4-bit dim={dim} recall@1 at k=1 = {r1:.4}, expected > 0.95");
+
+            let r64 = r_at(64);
+            assert!(r64 > 0.99, "4-bit dim={dim} recall@1 at k=64 = {r64:.4}, expected > 0.99");
+        }
+
+        if bit_width == 2 {
+            let r64 = r_at(64);
+            assert!(r64 > 0.90, "2-bit dim={dim} recall@1 at k=64 = {r64:.4}, expected > 0.90");
         }
     }
 }
@@ -136,12 +144,21 @@ fn recall_turboquant_dim1024() {
             eprintln!("  Recall@1 at k={k:>2}: {r:.4}");
         }
 
+        let r_at = |target_k: usize| -> f64 {
+            results.iter().find(|(k, _)| *k == target_k).map(|(_, r)| *r).unwrap_or(0.0)
+        };
+
         if bit_width == 4 {
-            let r_at_64 = results.iter().find(|(k, _)| *k == 64).map(|(_, r)| *r).unwrap_or(0.0);
-            assert!(
-                r_at_64 > 0.90,
-                "4-bit dim=1024 recall@1 at k=64 = {r_at_64:.4}, expected > 0.90"
-            );
+            let r1 = r_at(1);
+            assert!(r1 > 0.95, "4-bit dim={dim} recall@1 at k=1 = {r1:.4}, expected > 0.95");
+
+            let r64 = r_at(64);
+            assert!(r64 > 0.99, "4-bit dim={dim} recall@1 at k=64 = {r64:.4}, expected > 0.99");
+        }
+
+        if bit_width == 2 {
+            let r64 = r_at(64);
+            assert!(r64 > 0.90, "2-bit dim={dim} recall@1 at k=64 = {r64:.4}, expected > 0.90");
         }
     }
 }
