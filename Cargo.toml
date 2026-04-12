@@ -1,0 +1,62 @@
+[package]
+name = "grepvec"
+version = "0.1.0"
+edition = "2024"
+description = "Grep-style hybrid vector + fulltext search"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "grepvec"
+path = "src/main.rs"
+
+[lib]
+name = "grepvec"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+blake3 = "1.5"
+clap = { version = "4", features = ["derive", "env"] }
+fastembed = "5.13"
+ignore = "0.4"
+indicatif = "0.17"
+rayon = "1"
+rusqlite = { version = "0.39", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+thiserror = "2"
+turbovec = { git = "https://github.com/RyanCodrai/turbovec.git" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+accelerate-src = "0.3"
+blas-src = { version = "0.10", features = ["accelerate"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+blas-src = { version = "0.10", features = ["openblas"] }
+openblas-src = { version = "0.10", features = ["system"] }
+
+[dev-dependencies]
+ureq = "2"
+zip = "2"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Strict lints we enforce
+unwrap_used = "deny"
+expect_used = "deny"
+# Pedantic lints we opt out of
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+cast_possible_wrap = "allow"
+doc_markdown = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+similar_names = "allow"
+struct_excessive_bools = "allow"
+redundant_closure_for_method_calls = "allow"
+too_many_arguments = "allow"
