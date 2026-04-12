@@ -118,8 +118,8 @@ impl TurboQuantIndex {
         let centroids = self.centroids.as_ref().unwrap();
         let k = k.min(self.n_vectors);
 
-        // Oversample by 4x, then rerank with exact centroid-reconstructed scores.
-        let oversample = (4 * k).min(self.n_vectors);
+        // Oversample by 8x, then rerank with exact dot product scores.
+        let oversample = (8 * k).min(self.n_vectors);
 
         let (raw_scores, raw_indices) = search::search(
             queries,
