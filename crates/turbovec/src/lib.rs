@@ -122,7 +122,7 @@ impl TurboQuantIndex {
         let q_rot = search::rotate_queries(queries, nq, rotation, self.dim);
 
         // Oversample then rerank with exact dot product scores.
-        let oversample = (64 * k).min(self.n_vectors);
+        let oversample = (32 * k).min(self.n_vectors);
 
         let (raw_scores, raw_indices) = search::search_rotated(
             &q_rot,
