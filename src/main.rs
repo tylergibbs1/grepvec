@@ -1,6 +1,8 @@
 // Force-link BLAS (needed for turbovec's ndarray).
 #[cfg(target_os = "macos")]
 extern crate accelerate_src;
+#[cfg(target_os = "linux")]
+extern crate openblas_src;
 
 use std::io::IsTerminal;
 use std::path::PathBuf;
