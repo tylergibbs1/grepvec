@@ -33,6 +33,9 @@ pub struct TurboQuantIndex {
     n_vectors: usize,
     packed_codes: Vec<u8>,
     norms: Vec<f32>,
+    /// Rotated unit vectors stored for reranking (n_vectors * dim, f32).
+    /// Enables exact dot-product reranking of top candidates.
+    rotated_vectors: Vec<f32>,
     // Cached for search (lazily computed)
     blocked: Option<Vec<u8>>,
     n_blocks: usize,
@@ -71,6 +74,7 @@ impl TurboQuantIndex {
             n_vectors: 0,
             packed_codes: Vec::new(),
             norms: Vec::new(),
+            rotated_vectors: Vec::new(),
             blocked: None,
             n_blocks: 0,
             centroids: None,
@@ -88,15 +92,16 @@ impl TurboQuantIndex {
 
         let rotation = self.ensure_rotation();
         let (boundaries, _) = codebook::codebook(self.bit_width, self.dim);
-        let (packed, norms) = encode::encode(vectors, n, self.dim, &rotation, &boundaries, self.bit_width);
+        let (packed, norms, rotated) = encode::encode(vectors, n, self.dim, &rotation, &boundaries, self.bit_width);
 
-        let bytes_per_row = self.dim * self.bit_width / 8;
         if self.n_vectors == 0 {
             self.packed_codes = packed;
             self.norms = norms;
+            self.rotated_vectors = rotated;
         } else {
             self.packed_codes.extend_from_slice(&packed);
             self.norms.extend_from_slice(&norms);
+            self.rotated_vectors.extend_from_slice(&rotated);
         }
         self.n_vectors += n;
         self.blocked = None; // invalidate cache
@@ -130,7 +135,7 @@ impl TurboQuantIndex {
             oversample,
         );
 
-        // Rotate queries for reranking
+        // Rotate queries for reranking (exact dot product with stored rotated vectors)
         let q_rot: Vec<Vec<f32>> = (0..nq)
             .map(|qi| {
                 let q_row = &queries[qi * self.dim..(qi + 1) * self.dim];
@@ -147,30 +152,32 @@ impl TurboQuantIndex {
             })
             .collect();
 
-        // Rerank each query's candidates
+        // Rerank using exact dot product with stored rotated unit vectors
         let mut all_scores = Vec::with_capacity(nq * k);
         let mut all_indices = Vec::with_capacity(nq * k);
 
+        let have_rotated = !self.rotated_vectors.is_empty();
+
         for qi in 0..nq {
-            let cand_scores = &raw_scores[qi * oversample..(qi + 1) * oversample];
             let cand_indices = &raw_indices[qi * oversample..(qi + 1) * oversample];
 
-            // Recompute scores with full float precision
             let mut reranked: Vec<(f32, i64)> = cand_indices
                 .iter()
-                .enumerate()
-                .filter(|(_, &idx)| idx >= 0)
-                .map(|(_, &idx)| {
+                .filter(|&&idx| idx >= 0)
+                .map(|&idx| {
                     let vi = idx as usize;
-                    let score = encode::rerank_score(
-                        &self.packed_codes,
-                        vi,
-                        self.dim,
-                        self.bit_width,
-                        &q_rot[qi],
-                        centroids,
-                        self.norms[vi],
-                    );
+                    let score = if have_rotated {
+                        // Exact dot product with stored rotated unit vector * norm
+                        let v_rot = &self.rotated_vectors[vi * self.dim..(vi + 1) * self.dim];
+                        let dot: f32 = q_rot[qi].iter().zip(v_rot.iter()).map(|(a, b)| a * b).sum();
+                        dot * self.norms[vi]
+                    } else {
+                        // Fallback: centroid-reconstructed
+                        encode::rerank_score(
+                            &self.packed_codes, vi, self.dim, self.bit_width,
+                            &q_rot[qi], centroids, self.norms[vi],
+                        )
+                    };
                     (score, idx)
                 })
                 .collect();
@@ -205,6 +212,7 @@ impl TurboQuantIndex {
             n_vectors,
             packed_codes,
             norms,
+            rotated_vectors: Vec::new(), // Not persisted; reranking falls back to centroid-based
             blocked: None,
             n_blocks: 0,
             centroids: None,
