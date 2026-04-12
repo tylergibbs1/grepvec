@@ -156,8 +156,6 @@ impl TurboQuantIndex {
         let mut all_scores = Vec::with_capacity(nq * k);
         let mut all_indices = Vec::with_capacity(nq * k);
 
-        let have_rotated = !self.rotated_vectors.is_empty();
-
         for qi in 0..nq {
             let cand_indices = &raw_indices[qi * oversample..(qi + 1) * oversample];
 
@@ -166,19 +164,9 @@ impl TurboQuantIndex {
                 .filter(|&&idx| idx >= 0)
                 .map(|&idx| {
                     let vi = idx as usize;
-                    let score = if have_rotated {
-                        // Exact dot product with stored rotated unit vector * norm
-                        let v_rot = &self.rotated_vectors[vi * self.dim..(vi + 1) * self.dim];
-                        let dot: f32 = q_rot[qi].iter().zip(v_rot.iter()).map(|(a, b)| a * b).sum();
-                        dot * self.norms[vi]
-                    } else {
-                        // Fallback: centroid-reconstructed
-                        encode::rerank_score(
-                            &self.packed_codes, vi, self.dim, self.bit_width,
-                            &q_rot[qi], centroids, self.norms[vi],
-                        )
-                    };
-                    (score, idx)
+                    let v_rot = &self.rotated_vectors[vi * self.dim..(vi + 1) * self.dim];
+                    let dot: f32 = q_rot[qi].iter().zip(v_rot.iter()).map(|(a, b)| a * b).sum();
+                    (dot * self.norms[vi], idx)
                 })
                 .collect();
 

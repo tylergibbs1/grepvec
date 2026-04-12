@@ -52,58 +52,6 @@ pub fn encode(
     (packed, norms, rotated_owned)
 }
 
-/// Decode a single vector's quantized codes from bit-plane packed format.
-/// Returns the code (0..2^bits-1) for each dimension.
-pub fn decode_codes(packed_codes: &[u8], vec_idx: usize, dim: usize, bits: usize) -> Vec<u8> {
-    let bytes_per_plane = dim / 8;
-    let bytes_per_row = bits * bytes_per_plane;
-    let mut codes = vec![0u8; dim];
-
-    for j in 0..dim {
-        let byte_pos = j / 8;
-        let bit_pos = 7 - (j % 8);
-        let mut code = 0u8;
-        for p in 0..bits {
-            let plane_byte = packed_codes[vec_idx * bytes_per_row + p * bytes_per_plane + byte_pos];
-            if plane_byte & (1 << bit_pos) != 0 {
-                code |= 1 << p;
-            }
-        }
-        codes[j] = code;
-    }
-    codes
-}
-
-/// Reconstruct approximate dot product from quantized codes using centroids.
-/// Returns norm * sum(q_rot[i] * centroid[code[i]]) for the given vector.
-pub fn rerank_score(
-    packed_codes: &[u8],
-    vec_idx: usize,
-    dim: usize,
-    bits: usize,
-    q_rot: &[f32],
-    centroids: &[f32],
-    norm: f32,
-) -> f32 {
-    let bytes_per_plane = dim / 8;
-    let bytes_per_row = bits * bytes_per_plane;
-    let mut score = 0.0f32;
-
-    for j in 0..dim {
-        let byte_pos = j / 8;
-        let bit_pos = 7 - (j % 8);
-        let mut code = 0u8;
-        for p in 0..bits {
-            let plane_byte = packed_codes[vec_idx * bytes_per_row + p * bytes_per_plane + byte_pos];
-            if plane_byte & (1 << bit_pos) != 0 {
-                code |= 1 << p;
-            }
-        }
-        score += q_rot[j] * centroids[code as usize];
-    }
-    score * norm
-}
-
 /// Pack quantized codes into bit-plane format.
 fn pack_codes(codes: &[u8], n: usize, dim: usize, bits: usize) -> Vec<u8> {
     let bytes_per_plane = dim / 8;
