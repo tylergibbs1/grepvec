@@ -7,6 +7,10 @@
   No index build step. No daemons. No config files.
 </p>
 
+<p align="center">
+  <a href="https://github.com/tylergibbs1/grepvec/actions/workflows/ci.yml"><img src="https://github.com/tylergibbs1/grepvec/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
+
 ---
 
 Point it at a directory, give it a query, get results. Embeddings are computed on the fly, cached by content hash, and immediately queryable. Appending a file works on the next search with no rebuild.
@@ -15,19 +19,19 @@ Think of it as `ripgrep` for the case where you also want semantic similarity, n
 
 ## Install
 
-**Prebuilt binaries** (macOS, Linux):
+**From source** (requires Rust 1.85+, the crate uses edition 2024):
+```bash
+cargo install --git https://github.com/tylergibbs1/grepvec
+```
 
-Download from [GitHub Releases](https://github.com/tylergibbs1/grepvec/releases/latest), extract, and add to your `PATH`:
+On Linux the build links against system OpenBLAS, so install it first (e.g. `sudo apt-get install libopenblas-dev gfortran` on Debian/Ubuntu). macOS uses Accelerate and needs nothing extra.
+
+**Prebuilt binaries** (macOS arm64/x86_64, Linux x86_64): the release workflow attaches tarballs to [GitHub Releases](https://github.com/tylergibbs1/grepvec/releases) when a `v*` tag builds. No release has been published yet, so use the source install for now. Once one exists:
 ```bash
 # macOS (Apple Silicon)
 curl -LO https://github.com/tylergibbs1/grepvec/releases/latest/download/grepvec-aarch64-apple-darwin.tar.gz
 tar xzf grepvec-aarch64-apple-darwin.tar.gz
 sudo mv grepvec /usr/local/bin/
-```
-
-**From source** (requires Rust 1.80+):
-```bash
-cargo install --git https://github.com/tylergibbs1/grepvec
 ```
 
 On first run, the default embedding model (~400 MB) is downloaded and cached. Use `--model bge-small` (~30 MB) to start lighter.
@@ -190,6 +194,24 @@ for r in &results {
 - English-optimized by default. Use `--model e5-large` or `--model bge-m3` for multilingual.
 - External embedder (`--embed-cmd`) is not yet implemented.
 
+## Development
+
+```bash
+cargo check
+cargo clippy -p grepvec --all-targets -- -D warnings
+cargo test --lib
+```
+
+These are the checks CI runs. Recall and latency benchmarks are ignored by default:
+
+```bash
+cargo test --test recall_benchmark -- --ignored --nocapture
+./run_latency_bench.sh          # latency with recall assertions
+./benchmarks/vs_ripgrep.sh      # semantic vs substring comparison
+```
+
+Using grepvec from an agent? [CONTEXT.md](CONTEXT.md) lists the flags and conventions to follow (`--json`, `--fields`, `--dry-run`, `grepvec schema`).
+
 ## License
 
-MIT OR Apache-2.0
+Dual-licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE).
